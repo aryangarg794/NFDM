@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('-e', '--epochs', type=int, default=int(1e2), help='number of steps')
 parser.add_argument('-b', '--batch_size', type=int, default=64, help='batch size')
-parser.add_argument('-l', '--lr', type=float, default=1e-3, help='learning rate')
+parser.add_argument('-lr', '--lr', type=float, default=1e-3, help='learning rate')
 parser.add_argument('-s', '--save', action='store_true', help='save model or not')
 parser.add_argument('-d', '--device', type=str, default='cpu', help='device')
 parser.add_argument('-t', '--test', action='store_true', help='test mode')
@@ -28,7 +28,7 @@ if __name__ == "__main__":
                         device=args.device)
     
     idx = np.random.randint(low=0, high=len(cifar10.trainloader))
-    test_batch = cifar10.trainloader[idx]
+    test_batch = next(iter(cifar10.trainloader))
     
     if not args.test:
         model.train(args.epochs, cifar10.trainloader)

@@ -130,21 +130,21 @@ class AutoEncoder:
         self.decoder.eval()
         
         images, _ = batch
-        
+    
         for i in range(num_gen):
             idx = np.random.randint(low=0, high=len(images))
-            encoded_value = self.encoder(images[idx])
-            out = self.decoder(encoded_value)
-            reconstructed_image = out.view(*inp_shape).numpy()
-            true_image = self.encoded_values[idx][1].view(*inp_shape).numpy()
+            encoded_value = self.encoder(images[idx].flatten())
+            out = self.decoder(encoded_value).detach()
+            reconstructed_image = out.view(*inp_shape).transpose(0, 1).transpose(1, 2).numpy()
+            true_image = images[idx].view(*inp_shape).transpose(0, 1).transpose(1, 2).numpy()
             
             fig, axes = plt.subplots(1, 2, figsize=(8, 4))
             axes[0].imshow(reconstructed_image)
-            axes[0].title('Reconstructed ')
+            axes[0].set_title('Reconstructed')
             axes[0].axis('off')
             
             axes[1].imshow(true_image)
-            axes[1].title('True Image')
+            axes[1].set_title('True Image')
             axes[1].axis('off')
             
             fig.savefig(f'examples/random_example_{i}.png')

@@ -11,9 +11,7 @@ class CIFAR10:
         batch_size: int = 64,
     ) -> None:
 
-        transform = transforms.Compose(
-            [transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]) # from torch website
+        transform = transforms.Compose([transforms.ToTensor()]) # from torch website
         
         self.trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
                                                 download=True, transform=transform)
