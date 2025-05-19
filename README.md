@@ -22,3 +22,8 @@ Make changes accordingly to run your experiments.
 #### TODO
 
 - Add seeded experiments 
+
+
+#### References
+--------
+[1] Bartosh, G., Vetrov, D., & Naesseth, C. A. (2024). Neural Flow Diffusion Models: Learnable Forward Process for Improved Diffusion Modelling. arXiv [Stat.ML]. Retrieved from http://arxiv.org/abs/2404.12940

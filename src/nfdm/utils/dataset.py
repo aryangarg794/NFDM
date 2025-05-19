@@ -9,6 +9,7 @@ class CIFAR10:
     def __init__(
         self: Self,
         batch_size: int = 64,
+        test: bool = False
     ) -> None:
 
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,),(0.5,))]) # from torch website
@@ -17,5 +18,11 @@ class CIFAR10:
                                                 download=True, transform=transform)
         self.trainloader = torch.utils.data.DataLoader(self.trainset, batch_size=batch_size,
                                           shuffle=True, pin_memory=True)
+        
+        if test:
+            self.testset = torchvision.datasets.CIFAR10(root='./data', train=False,
+                                                download=True, transform=transform)
+            self.testloader = torch.utils.data.DataLoader(self.trainset, batch_size=batch_size,
+                                          shuffle=True)
         
         
