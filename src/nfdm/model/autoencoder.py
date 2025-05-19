@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+import torchvision
 
 from typing import Self, List, Tuple
 from torch import Tensor
@@ -14,7 +15,7 @@ class Encoder(nn.Module):
         self: Self,
         in_features: int, 
         bottleneck: int = 64,
-        hidden_layers: List = list([512, 512]),
+        hidden_layers: List = list([1024, 512]),
         *args, 
         **kwargs
     ) -> None:
@@ -42,7 +43,7 @@ class Decoder(nn.Module):
         self: Self,
         in_features: int, 
         bottleneck: int = 64,
-        hidden_layers: List = list([512, 512]),
+        hidden_layers: List = list([1024, 512]),
         *args, 
         **kwargs
     ) -> None:
@@ -54,6 +55,7 @@ class Decoder(nn.Module):
             nn.Linear(hidden_layers[0], hidden_layers[1]),
             nn.ReLU(),
             nn.Linear(hidden_layers[1], in_features),
+            nn.Tanh()
         )
         
     def forward(
@@ -69,7 +71,7 @@ class AutoEncoder:
     def __init__(
         self, 
         in_features: int, 
-        bottleneck: int = 64, 
+        bottleneck: int = 384, 
         lr: float = 1e-3, 
         batch_size: int = 256, 
         device: str = 'cpu',
@@ -90,7 +92,6 @@ class AutoEncoder:
         
         self.batch_size = batch_size
         self.criterion = nn.MSELoss()
-        self.encoded_values = []
         
     def train(
         self: Self, 
@@ -106,9 +107,6 @@ class AutoEncoder:
                 encoded = self.encoder(images.to(self.device))
                 reconstructed = self.decoder(encoded)
                 
-                if epoch == epochs-2: # last iteration
-                    self.encoded_values.append((encoded[0], images[0])) # add the first of the batch
-                
                 loss = self.criterion(reconstructed, images.flatten(start_dim=1))
                 
                 self.optimizer.zero_grad()
@@ -119,10 +117,11 @@ class AutoEncoder:
                 
             batch_loss /= self.batch_size
             pbar.set_description(f"Training AE | Loss {batch_loss:.3f}")
+            
     def generate(
         self: Self, 
         batch: Tuple, 
-        num_gen: int = 10,
+        num_gen: int = 5,
         inp_shape: Tuple = (3, 32, 32)
     ) -> None:
         
@@ -130,26 +129,22 @@ class AutoEncoder:
         self.decoder.eval()
         
         images, _ = batch
-    
-        for i in range(num_gen):
-            idx = np.random.randint(low=0, high=len(images))
-            encoded_value = self.encoder(images[idx].flatten())
-            out = self.decoder(encoded_value).detach()
-            reconstructed_image = out.view(*inp_shape).transpose(0, 1).transpose(1, 2).numpy()
-            true_image = images[idx].view(*inp_shape).transpose(0, 1).transpose(1, 2).numpy()
-            
-            fig, axes = plt.subplots(1, 2, figsize=(8, 4))
-            axes[0].imshow(reconstructed_image)
-            axes[0].set_title('Reconstructed')
-            axes[0].axis('off')
-            
-            axes[1].imshow(true_image)
-            axes[1].set_title('True Image')
-            axes[1].axis('off')
-            
-            fig.savefig(f'examples/random_example_{i}.png')
-            plt.close(fig)
 
+        # code from https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html
+        idxs = torch.randint(low=0, high=len(images), size=(num_gen,))
+        input_imgs = images[idxs]
+        
+        encodings = self.encoder(input_imgs.flatten(start_dim=1))
+        reconst_imgs = self.decoder(encodings).detach().view(-1, *inp_shape)
+        imgs = torch.stack([input_imgs, reconst_imgs], dim=1).flatten(0,1)
+        grid = torchvision.utils.make_grid(imgs, nrow=num_gen, normalize=True, value_range=(-1,1))
+        grid = grid.permute(1, 2, 0)
+        plt.figure(figsize=(12, 8))
+        plt.imshow(grid)
+        plt.axis('off')
+        plt.savefig(f'examples/Reconstructions.png')
+        
+        
         self.encoder.train()
         self.decoder.train()
     def save(
