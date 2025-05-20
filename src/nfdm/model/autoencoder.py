@@ -9,6 +9,8 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from nfdm.model.model_abc import GenerativeMethod
+
 class Encoder(nn.Module):
     
     def __init__(
@@ -64,7 +66,7 @@ class Decoder(nn.Module):
     ) -> Tensor: 
         return self.layers(input)
 
-class AutoEncoder:
+class AutoEncoder(GenerativeMethod):
     """Basic AE that flattens the input image and then performs reconstruction
     """
     
