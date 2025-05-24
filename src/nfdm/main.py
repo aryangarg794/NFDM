@@ -21,24 +21,29 @@ args = parser.parse_args()
 if __name__ == "__main__":
     if args.device == 'cuda':
         assert torch.cuda.is_available() == True, "You don't have a CUDA-enabled GPU"
-        
-    cifar10 = CIFAR10(args.batch_size)
+    
+    print(f'Using {args.device.upper()}')
+    
+    cifar10 = CIFAR10(args.batch_size, device=args.device)
     model = AutoEncoder(in_features=3*32*32, 
                         lr=args.lr, batch_size=args.batch_size, 
                         device=args.device)
     
     idx = np.random.randint(low=0, high=len(cifar10.trainloader))
-    test_batch = next(iter(cifar10.trainloader))
     
-    if not args.test:
-        model.train(args.epochs, cifar10.trainloader)
-        if args.save:
-            model.save('ae')
-        model.generate(test_batch)
-    else:
-        assert args.dir is not None, "No model dir provided"
-        model.load(args.dir)
-        model.generate(test_batch)
+    test_batch = next(iter(cifar10.trainloader))
+    try: 
+        if not args.test:
+            model.train(args.epochs, cifar10.trainloader)
+            if args.save:
+                model.save('ae')
+            model.generate(test_batch)
+        else:
+            assert args.dir is not None, "No model dir provided"
+            model.load(args.dir)
+            model.generate(test_batch)
+    except KeyboardInterrupt:
+        print('Experiment Stopped Prematurely')
         
         
    

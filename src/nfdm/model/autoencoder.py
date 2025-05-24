@@ -7,7 +7,9 @@ import torchvision
 from typing import Self, List, Tuple
 from torch import Tensor
 from torch.utils.data import DataLoader
+from torch.amp import GradScaler
 from tqdm import tqdm
+from line_profiler import profile
 
 from nfdm.model.model_abc import GenerativeMethod
 
@@ -77,6 +79,7 @@ class AutoEncoder(GenerativeMethod):
         lr: float = 1e-3, 
         batch_size: int = 256, 
         device: str = 'cpu',
+        amp: bool = True, 
         *args, 
         **kwargs
     ) -> None:
@@ -93,33 +96,45 @@ class AutoEncoder(GenerativeMethod):
                                           lr=lr)
         
         self.batch_size = batch_size
-        self.criterion = nn.MSELoss()
-        
+        self.criterion = nn.MSELoss().cuda()
+        self.amp = amp
+    
     def train(
         self: Self, 
         epochs: int, 
         train_loader: DataLoader,
     ) -> List[float]:
         
+        self.encoder.train()
+        self.decoder.train()
+        
+        scaler = GradScaler(self.device, enabled=self.amp)  
+
+        losses = []
         for epoch in (pbar := tqdm(range(epochs))):
             batch_loss = 0
-            for i, data in enumerate(train_loader):
+            
+            for data in train_loader:
                 images, _ = data
 
-                encoded = self.encoder(images.to(self.device))
-                reconstructed = self.decoder(encoded)
-                
-                loss = self.criterion(reconstructed, images.flatten(start_dim=1))
+                with torch.autocast(device_type=self.device, dtype=torch.float16, enabled=self.amp):  
+                    encoded = self.encoder(images)
+                    reconstructed = self.decoder(encoded)
+                    loss = self.criterion(reconstructed, images.flatten(start_dim=1))
+                    
+                scaler.scale(loss).backward()
+                scaler.step(self.optimizer)
+                scaler.update()
                 
                 self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-                
-                batch_loss += loss.item()
-                
-            batch_loss /= self.batch_size
-            pbar.set_description(f"Training AE | Loss {batch_loss:.3f}")
+
+                # this line takes a lot of runtime cpu-gpu sync
+            batch_loss = loss.item() 
+            # batch_loss /= self.batch_size 
+            # losses.append(batch_loss)
+            pbar.set_description(f"Training AE | Last Loss: {batch_loss:.3f}")
             
+        # return losses        
     def generate(
         self: Self, 
         batch: Tuple, 
@@ -142,7 +157,7 @@ class AutoEncoder(GenerativeMethod):
         grid = torchvision.utils.make_grid(imgs, nrow=num_gen, normalize=True, value_range=(-1,1))
         grid = grid.permute(1, 2, 0)
         plt.figure(figsize=(12, 8))
-        plt.imshow(grid)
+        plt.imshow(grid.cpu().numpy())
         plt.axis('off')
         plt.savefig(f'examples/Reconstructions.png')
         
