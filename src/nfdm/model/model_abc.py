@@ -11,10 +11,6 @@ class GenerativeMethod(ABC):
         pass
     
     @abstractmethod
-    def generate(self: Self) -> None:
-        pass
-    
-    @abstractmethod
     def save(self: Self) -> None:
         pass
     
