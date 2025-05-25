@@ -44,6 +44,7 @@ class CIFAR10:
             shuffle=True,
             pin_memory=True if device == 'cpu' else False,
             num_workers=num_workers,
+            drop_last=True
         )
         
         if test:

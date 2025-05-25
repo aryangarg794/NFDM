@@ -159,7 +159,7 @@ class AutoEncoder(GenerativeMethod):
         plt.figure(figsize=(12, 8))
         plt.imshow(grid.cpu().numpy())
         plt.axis('off')
-        plt.savefig(f'examples/Reconstructions.png')
+        plt.savefig(f'examples/AE_Reconstructions.png')
         
         
         self.encoder.train()
