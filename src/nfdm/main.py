@@ -10,8 +10,8 @@ from nfdm.utils.dataset import CIFAR10
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-e', '--epochs', type=int, default=int(1e2), help='number of steps')
-parser.add_argument('-b', '--batch_size', type=int, default=64, help='batch size')
-parser.add_argument('-lr', '--lr', type=float, default=2e-4, help='learning rate')
+parser.add_argument('-b', '--batch_size', type=int, default=128, help='batch size')
+parser.add_argument('-lr', '--lr', type=float, default=4e-4, help='learning rate')
 parser.add_argument('-s', '--save', action='store_true', help='save model or not')
 parser.add_argument('-d', '--device', type=str, default='cpu', help='device')
 parser.add_argument('-t', '--test', action='store_true', help='test mode')
@@ -33,14 +33,14 @@ if __name__ == "__main__":
     
     model = Diffusion(in_channels=3, 
                         lr=args.lr, batch_size=args.batch_size, 
-                        device=args.device, amp=args.amp)
+                        device=args.device, amp=False)
     
     
     try: 
         if not args.test:
             cifar10 = CIFAR10(args.batch_size, device=args.device)
             test_batch = next(iter(cifar10.trainloader))
-            model.train(epochs=args.epochs, train_loader=cifar10.trainloader)
+            model.train(epochs=args.epochs, train_loader=cifar10.trainloader, checkpoint=True)
             if args.save:
                 model.save()
             model.generate()

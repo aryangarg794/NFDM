@@ -3,15 +3,17 @@ name = "nfdm"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "torch>=2.7.0",
+    "timm>=1.0.15",
     "matplotlib>=3.10.3",
     "numpy>=2.2.6",
-    "torchvision>=0.22.0",
     "tqdm>=4.67.1",
+    "torchvision>=0.22.0",
     "line-profiler>=4.2.0",
-    "timm>=1.0.15",
+    "triton>=3.3.0",
+    "pytorch-ignite>=0.5.2",
 ]
 
 [build-system]

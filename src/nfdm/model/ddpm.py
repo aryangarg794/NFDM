@@ -178,7 +178,7 @@ class Diffusion(GenerativeMethod):
         batch_size: int = 128, 
         lr: float = 2e-4,
         device: str = 'cpu',
-        gamma: float = 0.95, 
+        gamma: float = 0.99, 
         amp: bool = True, 
     ) -> None:
         super(Diffusion, self).__init__()
@@ -203,22 +203,28 @@ class Diffusion(GenerativeMethod):
     ) -> List[float]: 
         if checkpoint:
             try: 
-                self.load()
+                self.load('checkpoint')
             except FileNotFoundError:
                 print('No checkpoint found')
                 
         scaler = GradScaler(self.device, enabled=self.amp)
+        max_loss = float('inf')
+        self.it = 0 
+        self.epoch_loss = 0 
         
         for epoch in (pbar := tqdm(range(epochs))): 
             batch_loss = 0 
+            lr = self.lr_sched.get_last_lr()[0]
+            
             for data in train_loader:
+                self.it += 1
                 images, _ = data
                 timesteps = torch.randint(0, self.horizon, (self.batch_size, ), device=self.device)
                 noise = torch.randn_like(images, device=self.device).detach()
                 alpha = self.variance_sched.alpha[timesteps].view(self.batch_size, 1, 1, 1)
                 images = (torch.sqrt(alpha) * images) + (torch.sqrt(1-alpha) * noise)
                 
-                with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
+                with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=False):
                     outs = self.model(images.detach(), timesteps)
                     loss = self.criterion(outs, noise)
                 
@@ -227,17 +233,18 @@ class Diffusion(GenerativeMethod):
                 scaler.step(self.optimizer)
                 scaler.update()
                 
-                
                 self.ema.update(self.model)
-                
+        
                 batch_loss += loss.detach().item()
                 
-            batch_loss /= len(images)
+                pbar.set_description(f"Training Diffusion | Last Loss: {self.epoch_loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
+
             self.lr_sched.step()
-            lr = self.lr_sched.get_last_lr()[0]
-            pbar.set_description(f"Training Diffusion | Last Loss: {batch_loss:.3f} | LR: {lr:.7f}")
-            if checkpoint: 
-                self.save()
+            self.epoch_loss = batch_loss / len(images)
+                
+            if checkpoint and batch_loss < max_loss: 
+                self.save('checkpoint')
+                max_loss = batch_loss
             
             
     def save(
