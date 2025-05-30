@@ -7,6 +7,7 @@ from typing import Self, List, Tuple
 from timm.utils.model_ema import ModelEmaV3
 from tqdm import tqdm
 from torch.amp import GradScaler
+from torch.profiler import profile, record_function, ProfilerActivity
 
 from nfdm.model.model_abc import GenerativeMethod
 
@@ -334,7 +335,7 @@ class NFDM(GenerativeMethod):
         max_loss = float('inf')
         self.it = 0 
         self.epoch_loss = 0   
-        
+        scaler = GradScaler(self.device, enabled=self.amp)
         
         for epoch in (pbar := tqdm(range(epochs + self.warmup))): 
             batch_loss = 0 
@@ -345,13 +346,17 @@ class NFDM(GenerativeMethod):
                 images, _ = data
                 
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
+                with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
+                    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+                        with record_function("model_inference"):
+                            forward_drift, reverse_drift, vol = self.model(images, timesteps)
+                            loss = torch.mean(((1 / (2 * vol.view(-1, 1, 1, 1))) * (forward_drift - reverse_drift) ** 2))
                 
-                forward_drift, reverse_drift, vol = self.model(images, timesteps)
-                loss = torch.mean(((1 / (2 * vol.view(-1, 1, 1, 1))) * (forward_drift - reverse_drift) ** 2))
-                
+                print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
                 self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+                scaler.scale(loss).backward()
+                scaler.step(self.optimizer)
+                scaler.update()
 
                 self.ema.update(self.model)
         

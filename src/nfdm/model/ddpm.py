@@ -224,7 +224,7 @@ class Diffusion(GenerativeMethod):
                 alpha = self.variance_sched.alpha[timesteps].view(self.batch_size, 1, 1, 1)
                 images = (torch.sqrt(alpha) * images) + (torch.sqrt(1-alpha) * noise)
                 
-                with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=False):
+                with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
                     outs = self.model(images.detach(), timesteps)
                     loss = self.criterion(outs, noise)
                 
