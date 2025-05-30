@@ -5,6 +5,7 @@ import argparse
 from nfdm.model.autoencoder import AutoEncoder
 from nfdm.model.ddpm import Diffusion
 from nfdm.utils.dataset import CIFAR10
+from nfdm.model.nfdm_model import NFDM
 
 
 parser = argparse.ArgumentParser()
@@ -31,9 +32,9 @@ if __name__ == "__main__":
     #                     lr=args.lr, batch_size=args.batch_size, 
     #                     device=args.device, amp=args.amp)
     
-    model = Diffusion(in_channels=3, 
+    model = NFDM(in_channels=3, 
                         lr=args.lr, batch_size=args.batch_size, 
-                        device=args.device, amp=False)
+                        device=args.device, amp=args.amp)
     
     
     try: 

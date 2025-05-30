@@ -208,7 +208,7 @@ class NFDM(GenerativeMethod):
                 images, _ = data
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
                 
-                with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=False):
+                with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
                     outs = self.model(images.detach(), timesteps)
                     loss = torch.mean(outs)
                 
