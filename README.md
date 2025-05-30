@@ -21,7 +21,7 @@ Make changes accordingly to run your experiments.
 ------- 
 #### TODO
 
-- Add seeded experiments 
+- Add warmup 
 
 
 #### References

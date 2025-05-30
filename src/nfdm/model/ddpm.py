@@ -203,7 +203,7 @@ class Diffusion(GenerativeMethod):
     ) -> List[float]: 
         if checkpoint:
             try: 
-                self.load('checkpoint')
+                self.load('checkpoint_ddpm')
             except FileNotFoundError:
                 print('No checkpoint found')
                 
@@ -243,7 +243,7 @@ class Diffusion(GenerativeMethod):
             self.epoch_loss = batch_loss / len(images)
                 
             if checkpoint and batch_loss < max_loss: 
-                self.save('checkpoint')
+                self.save('checkpoint_ddpm')
                 max_loss = batch_loss
             
             

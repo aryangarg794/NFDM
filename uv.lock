@@ -450,12 +450,10 @@ dependencies = [
     { name = "line-profiler" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "pytorch-ignite" },
     { name = "timm" },
     { name = "torch" },
     { name = "torchvision" },
     { name = "tqdm" },
-    { name = "triton" },
 ]
 
 [package.metadata]
@@ -463,12 +461,10 @@ requires-dist = [
     { name = "line-profiler", specifier = ">=4.2.0" },
     { name = "matplotlib", specifier = ">=3.10.3" },
     { name = "numpy", specifier = ">=2.2.6" },
-    { name = "pytorch-ignite" },
     { name = "timm", specifier = ">=1.0.15" },
     { name = "torch", specifier = ">=2.7.0" },
     { name = "torchvision", specifier = ">=0.22.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "triton", specifier = ">=3.3.0" },
 ]
 
 [[package]]
@@ -772,19 +768,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892 },
-]
-
-[[package]]
-name = "pytorch-ignite"
-version = "0.5.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "packaging" },
-    { name = "torch" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b7/8f/74ef67efa1d70eaf6734c95406515d51d85362e2055ca9d3be3a10316a0b/pytorch_ignite-0.5.2.tar.gz", hash = "sha256:63bdbafe3fb76bf243e4c7fa4b71c89a652fece6c4c2f6e3c5b448ac74447d98", size = 236746 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/89/91d28b929f75c1205a8a37224fd25e7c97e295a56c8308ed47e9763fe4f4/pytorch_ignite-0.5.2-py3-none-any.whl", hash = "sha256:ae0843e7b45416041cc57700dcbdfae30ae6432f2dc5bc20dfbfe1dae3414c91", size = 343180 },
 ]
 
 [[package]]

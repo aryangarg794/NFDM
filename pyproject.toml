@@ -12,8 +12,6 @@ dependencies = [
     "tqdm>=4.67.1",
     "torchvision>=0.22.0",
     "line-profiler>=4.2.0",
-    "triton>=3.3.0",
-    "pytorch-ignite>=0.5.2",
 ]
 
 [build-system]

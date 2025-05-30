@@ -17,6 +17,7 @@ class CIFAR10:
     ) -> None:
         transform = transforms.Compose([
             transforms.ToTensor(), 
+            transforms.RandomHorizontalFlip(p=0.2),
             transforms.Normalize((0.5,), (0.5,))
         ])
         
