@@ -80,13 +80,14 @@ class UNETLayer(nn.Module):
         attention: bool = False, 
         num_heads: int = 8, 
         dropout: float = 0.1,
+        horizon: int = 1000,
         *args, 
         **kwargs
     ) -> None:
         super(UNETLayer, self).__init__(*args, **kwargs)
         
-        self.resblock1 = ResidualBlock(in_channels=in_channels)    
-        self.resblock2 = ResidualBlock(in_channels=in_channels)
+        self.resblock1 = ResidualBlock(in_channels=in_channels, horizon=horizon)    
+        self.resblock2 = ResidualBlock(in_channels=in_channels, horizon=horizon)
         
         if upsample:
             self.conv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, 
@@ -120,7 +121,9 @@ class DDPM(nn.Module):
     
     def __init__(
         self: Self,
-        in_channels: int = 3, 
+        in_channels: int = 3,
+        out_channels: int = 3, 
+        horizon: int = 1000,
         channels: List = list([64, 128, 256, 512, 512, 384, 192]),
         *args, 
         **kwargs
@@ -128,15 +131,15 @@ class DDPM(nn.Module):
         super(DDPM, self).__init__(*args, **kwargs)
         
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=3, padding=1)
-        self.layer1 = UNETLayer(in_channels=64, out_channels=128) # 64 -> 128 
-        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True) # 128 -> 256
-        self.layer3 = UNETLayer(in_channels=256, out_channels=512) # 256 -> 512
-        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True) # 512 -> 256
-        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True) # 512 -> 384
-        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True) # 384 -> 192 
+        self.layer1 = UNETLayer(in_channels=64, out_channels=128, horizon=horizon) # 64 -> 128 
+        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True, horizon=horizon) # 128 -> 256
+        self.layer3 = UNETLayer(in_channels=256, out_channels=512, horizon=horizon) # 256 -> 512
+        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True, horizon=horizon) # 512 -> 256
+        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True, horizon=horizon) # 512 -> 384
+        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True, horizon=horizon) # 384 -> 192 
         
         self.conv2 = nn.Conv2d(in_channels=channels[6], out_channels=channels[6]//2, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(in_channels=channels[6]//2, out_channels=in_channels, kernel_size=1)
+        self.conv3 = nn.Conv2d(in_channels=channels[6]//2, out_channels=out_channels, kernel_size=1)
         self.relu = nn.ReLU()
         
     def forward(self: Self, x: Tensor, t: int) -> Tensor:
@@ -183,7 +186,7 @@ class Diffusion(GenerativeMethod):
     ) -> None:
         super(Diffusion, self).__init__()
         
-        self.model = DDPM(in_channels=in_channels).to(device=device)
+        self.model = DDPM(in_channels=in_channels, out_channels=in_channels).to(device=device)
         self.ema = ModelEmaV3(self.model, device=device)
         self.device = device
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
