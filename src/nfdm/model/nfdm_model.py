@@ -193,7 +193,7 @@ class ForwardProcess(nn.Module):
                return self.net(x_in, t_in)
            return func_t
 
-        return torch.func.jvp(func(x), (t,), (torch.ones_like(t),)) # get dm/dt and ds/dt
+        return torch.autograd.functional.jvp(func(x), (t,), (torch.ones_like(t),), create_graph=True) # get dm/dt and ds/dt
         
     def forward(
         self: Self, 
@@ -280,7 +280,7 @@ class NFDMModel(nn.Module):
         self.criterion = nn.MSELoss()
         
     def drift(self: Self, dz: Tensor, score: Tensor, vol: Tensor):
-        return dz - 0.5 * vol * score
+        return dz - 0.5 * vol.view(-1, 1, 1, 1) * score
     
     def forward(self: Self, x: Tensor, t: Tensor) -> Tensor: 
         eps = torch.randn_like(x)
@@ -347,7 +347,7 @@ class NFDM(GenerativeMethod):
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
                 
                 forward_drift, reverse_drift, vol = self.model(images, timesteps)
-                loss = torch.mean((1 / (2 * vol)) * (forward_drift - reverse_drift) ** 2)
+                loss = torch.mean(((1 / (2 * vol.view(-1, 1, 1, 1))) * (forward_drift - reverse_drift) ** 2))
                 
                 self.optimizer.zero_grad()
                 loss.backward()
