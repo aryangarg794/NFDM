@@ -1,4 +1,5 @@
 import torch 
+import math 
 import numpy as np
 import torch.nn as nn
 
@@ -7,9 +8,21 @@ from typing import Self, List, Tuple
 from timm.utils.model_ema import ModelEmaV3
 from tqdm import tqdm
 from torch.amp import GradScaler
-from torch.profiler import profile, record_function, ProfilerActivity
+from torch.optim.lr_scheduler import LRScheduler
 
 from nfdm.model.model_abc import GenerativeMethod
+
+
+class WarmUp(LRScheduler):
+    
+    def __init__(
+        self: Self, 
+        optimizer: torch.optim, 
+        last_epoch: int = -1
+    ):
+        super().__init__(optimizer, last_epoch)
+        
+        
 
 class VolatilityNeural(nn.Module):
     def __init__(self: Self, hidden_dim: int = 64, activation: nn.Module = nn.SELU):
@@ -134,7 +147,7 @@ class ForwardNet(nn.Module):
     def __init__(
         self: Self,
         in_channels: int = 3, 
-        delta: float = 1e-4, 
+        delta: float = 1e-3, 
         channels: List = list([64, 128, 256, 512, 512, 384, 192]),
         *args, 
         **kwargs
@@ -155,6 +168,8 @@ class ForwardNet(nn.Module):
         
         self.delta = delta
         self.in_channels = in_channels
+        self.sp = nn.Softplus()
+
         
     def forward(self: Self, x: Tensor, t: float | Tensor) -> Tensor:
         h = self.conv1(x)
@@ -172,7 +187,7 @@ class ForwardNet(nn.Module):
         mu_bar, sigma_bar = h.chunk(2, dim=1)
         time_tensor = t.view(-1, 1, 1, 1)
         mu = (1 - time_tensor) * x + time_tensor * (1 - time_tensor) * mu_bar
-        sig = self.delta ** (1-time_tensor) * sigma_bar.pow(time_tensor * (1 - time_tensor))
+        sig = math.log(self.delta) * (1 - time_tensor) + sigma_bar * time_tensor * (1 - time_tensor) # avoiding nans 
         
         return mu, sig.exp()
 
@@ -204,6 +219,7 @@ class ForwardProcess(nn.Module):
         t: float | Tensor, 
     ) -> Tuple[Tensor, Tensor, Tensor]:
         values, grads = self.get_jvp(x, t)
+
         mu, sigma = values
         dmu, dsigma = grads
         
@@ -350,8 +366,9 @@ class NFDM(GenerativeMethod):
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
                 with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
                     forward_drift, reverse_drift, vol = self.model(images, timesteps)
-                    loss = torch.mean(((1 / (2 * vol.view(-1, 1, 1, 1))) * (forward_drift - reverse_drift) ** 2).sum(dim=(1, 2, 3)))
+                    loss = torch.mean((0.5 * (forward_drift - reverse_drift) ** 2 / vol.view(-1, 1, 1, 1)))
                 
+                print(loss)
                 self.optimizer.zero_grad()
                 scaler.scale(loss).backward()
                 scaler.step(self.optimizer)
@@ -394,14 +411,9 @@ class NFDM(GenerativeMethod):
 
     
 if __name__ == "__main__": 
-    x = torch.randn((32, 3, 32, 32), device='cuda')
-    t = torch.rand((32, 1), device='cuda')
+    x = torch.randn((1, 3, 32, 32), device='cuda')
+    t = torch.rand((1, 1), device='cuda')
     model = NFDMModel().to('cuda')
     
-    params = 0 
-    for param in model.parameters():
-        params += param.numel()
-    
-    print(params)
     out = model(x, t)
-    print(out[0].shape, out[1].shape)    
+    # print(out[0], out[1])    

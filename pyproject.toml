@@ -12,6 +12,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "torchvision>=0.22.0",
     "line-profiler>=4.2.0",
+    "ipykernel>=6.29.5",
 ]
 
 [build-system]
