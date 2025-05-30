@@ -58,7 +58,7 @@ if __name__ == "__main__":
             
         
         if not args.test:
-            print(f'=============Training {args.model.capitalize()} with batch {args.batch_size}=============')
+            print(f'=============Training {args.model.upper()} with batch {args.batch_size}=============')
             cifar10 = CIFAR10(args.batch_size, device=args.device)
             test_batch = next(iter(cifar10.trainloader))
             model.train(epochs=args.epochs, train_loader=cifar10.trainloader, checkpoint=True)

@@ -196,6 +196,7 @@ class ForwardProcess(nn.Module):
 
         return torch.autograd.functional.jvp(func(x), (t,), (torch.ones_like(t),), create_graph=True) # get dm/dt and ds/dt
         
+        
     def forward(
         self: Self, 
         eps: Tensor, 
@@ -319,6 +320,7 @@ class NFDM(GenerativeMethod):
         
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.lr_sched = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
+
     
     def train(
         self: Self, 
@@ -347,12 +349,9 @@ class NFDM(GenerativeMethod):
                 
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
                 with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
-                    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
-                        with record_function("model_inference"):
-                            forward_drift, reverse_drift, vol = self.model(images, timesteps)
-                            loss = torch.mean(((1 / (2 * vol.view(-1, 1, 1, 1))) * (forward_drift - reverse_drift) ** 2))
+                    forward_drift, reverse_drift, vol = self.model(images, timesteps)
+                    loss = torch.mean(((1 / (2 * vol.view(-1, 1, 1, 1))) * (forward_drift - reverse_drift) ** 2).sum(dim=(1, 2, 3)))
                 
-                print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
                 self.optimizer.zero_grad()
                 scaler.scale(loss).backward()
                 scaler.step(self.optimizer)
