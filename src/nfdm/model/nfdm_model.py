@@ -295,7 +295,6 @@ class NFDMModel(nn.Module):
         self.forward_process = ForwardProcess(in_channels)
         self.reverse_process = ReverseProcess(in_channels)
         self.g_t = VolatilityNeural()
-        self.criterion = nn.MSELoss()
         
     def drift(self: Self, dz: Tensor, score: Tensor, vol: Tensor):
         return dz - 0.5 * vol.view(-1, 1, 1, 1) * score
@@ -366,7 +365,7 @@ class NFDM(GenerativeMethod):
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
                 with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
                     forward_drift, reverse_drift, vol = self.model(images, timesteps)
-                    loss = torch.mean((0.5 * (forward_drift - reverse_drift) ** 2 / vol.view(-1, 1, 1, 1)))
+                    loss = (0.5 * (forward_drift - reverse_drift) ** 2 / vol.view(-1, 1, 1, 1)).sum(dim=(1, 2, 3)).mean()
                 
                 print(loss)
                 self.optimizer.zero_grad()
