@@ -39,9 +39,10 @@ class Var_Scheduler(nn.Module):
             nn.SELU(),
             nn.Linear(hidden_dim, out_dim),
         )
+        self.sp = nn.Softplus()
         
     def forward(self, t: Tensor) -> Tensor:
-        return torch.abs(self.net(t)) + 1e-2
+        return self.sp(self.net(t)) + 1e-2
     
 class AffineNeural(nn.Module):
     def __init__(self, in_channels, out_channels, device):
