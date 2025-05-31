@@ -14,29 +14,39 @@ from line_profiler import profile
 
 # implementation loosely inspired by https://medium.com/data-science/diffusion-model-from-scratch-in-pytorch-ddpm-9d9760528946
 
-class Sinusoidal(nn.Module):
+# class Sinusoidal(nn.Module):
     
-    def __init__(
-        self: Self,
-        embed_size: int, 
-        horizon: int = 1000,
-        *args, 
-        **kwargs
-    ) -> None:
-        super(Sinusoidal, self).__init__(*args, **kwargs) 
-        
-        pe = torch.zeros(horizon, embed_size, requires_grad=False)
-        positions = torch.arange(0, horizon).unsqueeze(dim=1)
-        div = torch.exp(torch.arange(0, embed_size, 2).float() * -(np.log(10000.0) / embed_size))
-        pe[:, 0::2] = torch.sin(positions * div)
-        pe[:, 1::2] = torch.cos(positions * div)
-        
-        self.embed_size = embed_size
-        self.register_buffer("pe", pe) 
+#     def __init__(
+#         self: Self,
+#         embed_size: int, 
+#         *args, 
+#         **kwargs
+#     ) -> None:
+#         super(Sinusoidal, self).__init__(*args, **kwargs)
+#         self.embed_size = embed_size 
 
-    def forward(self: Self, t: int) -> Tensor:
-        return self.pe[t].view(-1, self.embed_size, 1, 1)
+#         i = torch.arange(embed_size // 2, requires_grad=False)
+#         frequencies = 1 / (10000 ** (2 * i / embed_size))
+#         self.register_buffer("freq", frequencies)
+
+#     def forward(self: Self, t: int) -> Tensor:
+#         encoding = torch.zeros((t.shape[0], self.embed_size), device=t.device, requires_grad=False)
+#         angles = t * self.freq
+#         encoding[:, 0::2] = torch.sin(angles)
+#         encoding[:, 1::2] = torch.cos(angles)
+#         return encoding.view(-1, self.embed_size, 1, 1)
     
+class FourierTimestepEmbedding(nn.Module):
+    def __init__(self, embed_dim, scale=30.0):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.scale = scale
+        self.freqs = nn.Parameter(torch.randn(embed_dim // 2) * scale, requires_grad=False)
+
+    def forward(self: Self, t: float | Tensor):
+        angles = t * self.freqs * 2 * np.pi  
+        emb = torch.cat([torch.sin(angles), torch.cos(angles)], dim=-1)
+        return emb  
     
 class ResidualBlock(nn.Module):
     
@@ -47,12 +57,21 @@ class ResidualBlock(nn.Module):
         dropout: float = 0.1, 
         activation: nn.Module = nn.ReLU,
         groups: int = 32,
+        hidden_dim: int = 64,
         *args, 
         **kwargs
     ) -> None:
         super(ResidualBlock, self).__init__(*args, **kwargs)
         
-        self.sinusoidal = Sinusoidal(in_channels, horizon)
+        self.time = nn.Sequential(
+            FourierTimestepEmbedding(in_channels), 
+            activation(), 
+            nn.Linear(in_channels, hidden_dim), 
+            activation(), 
+            nn.Linear(hidden_dim, hidden_dim), 
+            activation(),
+            nn.Linear(hidden_dim, in_channels)
+        )
         
         self.layers = nn.Sequential(
             nn.GroupNorm(num_groups=groups, num_channels=in_channels),
@@ -63,10 +82,12 @@ class ResidualBlock(nn.Module):
             activation(),
             nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, padding=1)
         )
+
+        self.embed_size = in_channels
         
     def forward(self: Self, x: Tensor, t: int, embed: bool) -> Tensor:
         if embed: 
-            x = x + self.sinusoidal(t)
+            x = x + self.time(t).view(-1, self.embed_size, 1, 1)
         return self.layers(x) + x * 1/np.sqrt(2)
     
     

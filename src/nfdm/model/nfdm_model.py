@@ -13,16 +13,16 @@ from torch.amp import GradScaler
 from line_profiler import profile
 from nfdm.model.ddpm import DDPM
 
-class Continuous_DDPM(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, num_timesteps: int = 300):
-        super().__init__()
+# class Continuous_DDPM(nn.Module):
+#     def __init__(self, in_channels: int, out_channels: int, num_timesteps: int = 300):
+#         super().__init__()
 
-        self.num_timesteps = num_timesteps
-        self.net = DDPM(in_channels=in_channels, out_channels=out_channels, horizon=num_timesteps+1)
+#         self.num_timesteps = num_timesteps
+#         self.net = DDPM(in_channels=in_channels, out_channels=out_channels, horizon=num_timesteps+1)
     
-    def forward(self, x: Tensor, t: Tensor) -> Tensor:
-        t_i = (t * self.num_timesteps).long()
-        return self.net(x, t_i)
+#     def forward(self, x: Tensor, t: Tensor) -> Tensor:
+#         # t_i = (t * self.num_timesteps).long()
+#         return self.net(x, t)
 
 class Var_Scheduler(nn.Module):
     def __init__(self, in_dim: int = 1, out_dim: int = 1, hidden_dim: int = 64):
@@ -47,7 +47,7 @@ class AffineNeural(nn.Module):
     def __init__(self, in_channels, out_channels, device):
         super().__init__()
 
-        self.net = Continuous_DDPM(in_channels=in_channels, out_channels=out_channels).to(device)
+        self.net = DDPM(in_channels=in_channels, out_channels=out_channels).to(device)
 
     def forward(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
         m_ls = self.net(x, t)
@@ -104,7 +104,7 @@ def score_based_sde_drift(dz: Tensor, score: Tensor, g2: Tensor) -> Tensor:
     return dz - 0.5 * g2 * score
 
 class NeuralDiffusion(nn.Module):
-    def __init__(self, transform: AffineTransform, pred: Continuous_DDPM, vol: nn.Module):
+    def __init__(self, transform: AffineTransform, pred: DDPM, vol: nn.Module):
         super().__init__()
 
         self.transform = transform
@@ -170,7 +170,7 @@ class NFDM(GenerativeMethod):
         super(NFDM, self).__init__()
  
         self.transform = AffineTransform(flow=AffineNeural(in_channels, 2*in_channels, device))
-        self.predictor = Continuous_DDPM(in_channels=in_channels, out_channels=in_channels).to(device)
+        self.predictor = DDPM(in_channels=in_channels, out_channels=in_channels).to(device)
         self.scheduler = Var_Scheduler().to(device)
         self.model = NeuralDiffusion(self.transform, self.predictor, self.scheduler).to(device)
 
