@@ -104,7 +104,7 @@ class ForwardNet(nn.Module):
     def __init__(
         self: Self,
         in_channels: int = 3, 
-        delta: float = 1e-2, 
+        delta: float = 1e-1, 
         channels: List = list([64, 128, 256, 512, 512, 384, 192]),
         *args, 
         **kwargs
@@ -245,6 +245,8 @@ class ReverseProcess(nn.Module):
         h = self.conv2(torch.cat([x1, h], dim=1))
         h = self.relu(h)
         out = self.conv3(h)
+        time = t.view(-1, 1, 1, 1)
+        # out = (1 - time) * out + (time + 0.01) * x
         
         return out
     
@@ -272,9 +274,9 @@ class NFDMModel(nn.Module):
         _, reverse_dz, reverse_scores = self.forward_process.inverse(z, pred_x, t)
         
         vol = self.g_t(t).pow(2).view(-1, 1, 1, 1)
-        with torch.no_grad():
-            print("g_t(t) min/mean/max:", self.g_t(t).min().item(), self.g_t(t).mean().item(), self.g_t(t).max().item())
-            print("vol      min/mean/max:", vol.min().item(),   vol.mean().item(),   vol.max().item())
+        # with torch.no_grad():
+        #     print("g_t(t) min/mean/max:", self.g_t(t).min().item(), self.g_t(t).mean().item(), self.g_t(t).max().item())
+        #     print("vol      min/mean/max:", vol.min().item(),   vol.mean().item(),   vol.max().item())
         forward_drift  = self.drift(forward_dz, forward_scores, vol)
         reverse_drift  = self.drift(reverse_dz, reverse_scores, vol)
         
