@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn as nn
 
 from torch import Tensor
-from typing import Self, List, Tuple
+from typing import Self, List, Tuple, Callable
 from timm.utils.model_ema import ModelEmaV3
 from tqdm import tqdm
 from torch.amp import GradScaler
@@ -203,15 +203,23 @@ class ForwardProcess(nn.Module):
         
         self.net = ForwardNet(in_channels)
         
+    def jvp(self: Self, f: Callable, x: Tensor, v: Tensor) -> Tuple[Tensor]:
+        return torch.autograd.functional.jvp(
+            f, x, v, 
+            create_graph=torch.is_grad_enabled()
+        )
+
+    def t_dir(self: Self, f: Callable, t: Tensor) -> Tuple[Tensor]:
+        return self.jvp(f, t, torch.ones_like(t))    
+
     def get_jvp(self: Self, x: Tensor, t: float | Tensor) -> Tuple:
         def func(x_in): 
            def func_t(t_in):
                return self.net(x_in, t_in)
            return func_t
 
-        return torch.autograd.functional.jvp(func(x), (t,), (torch.ones_like(t),), create_graph=True) # get dm/dt and ds/dt
-        
-        
+        return self.t_dir(func(x), t)
+    
     def forward(
         self: Self, 
         eps: Tensor, 
@@ -222,7 +230,7 @@ class ForwardProcess(nn.Module):
 
         mu, sigma = values
         dmu, dsigma = grads
-        
+          
         z = eps * sigma + mu
         dz = dmu + dsigma * eps
         score = - eps / sigma
@@ -365,9 +373,8 @@ class NFDM(GenerativeMethod):
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
                 with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
                     forward_drift, reverse_drift, vol = self.model(images, timesteps)
-                    loss = (0.5 * (forward_drift - reverse_drift) ** 2 / vol.view(-1, 1, 1, 1)).sum(dim=(1, 2, 3)).mean()
+                    loss = (0.5 * (forward_drift - reverse_drift) ** 2 / vol.view(-1, 1, 1, 1)).mean()
                 
-                print(loss)
                 self.optimizer.zero_grad()
                 scaler.scale(loss).backward()
                 scaler.step(self.optimizer)
@@ -377,7 +384,7 @@ class NFDM(GenerativeMethod):
         
                 batch_loss += loss.detach().item()
                 
-                pbar.set_description(f"Training NFDM | Last Loss: {self.epoch_loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
+                pbar.set_description(f"Training NFDM | Last Loss: {batch_loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
 
             self.lr_sched.step()
             self.epoch_loss = batch_loss / len(images)
