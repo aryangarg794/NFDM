@@ -9,8 +9,10 @@ from timm.utils.model_ema import ModelEmaV3
 from tqdm import tqdm
 from torch.amp import GradScaler
 from torch.optim.lr_scheduler import LRScheduler
+from torchsummary import summary
 
 from nfdm.model.model_abc import GenerativeMethod
+from nfdm.model.ddpm import UNETLayer
 
 
 class WarmUp(LRScheduler):
@@ -25,25 +27,27 @@ class WarmUp(LRScheduler):
         
 
 class VolatilityNeural(nn.Module):
-    def __init__(self: Self, hidden_dim: int = 64, activation: nn.Module = nn.SELU):
+    def __init__(self: Self, hidden_dim: int = 64, in_dim: int =1, out_dim: int = 1  ):
         super().__init__()
 
         self.net = nn.Sequential(
-            nn.Linear(1, hidden_dim), 
-            activation(), 
-            nn.Linear(hidden_dim, hidden_dim), 
-            activation(), 
-            nn.Linear(hidden_dim, hidden_dim), 
-            activation(), 
-            nn.Linear(hidden_dim, 1)
+            nn.Linear(in_dim, hidden_dim),
+            nn.SELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SELU(),
+            nn.Linear(hidden_dim, out_dim),
         )
         self.sp = nn.Softplus()
 
     def forward(self, t: Tensor) -> Tensor:
-        return self.sp(self.net(t))
+        return self.sp(self.net(t)) 
 
 class FourierTimestepEmbedding(nn.Module):
-    def __init__(self, embed_dim, scale=30.0):
+    def __init__(self, embed_dim, scale=1.0):
         super().__init__()
         self.embed_dim = embed_dim
         self.scale = scale
@@ -54,7 +58,7 @@ class FourierTimestepEmbedding(nn.Module):
         emb = torch.cat([torch.sin(angles), torch.cos(angles)], dim=-1)
         return emb  
     
-class ResidualBlock(nn.Module):
+class ResidualBlockSDE(nn.Module):
     
     def __init__(
         self: Self,
@@ -66,7 +70,7 @@ class ResidualBlock(nn.Module):
         *args, 
         **kwargs
     ) -> None:
-        super(ResidualBlock, self).__init__(*args, **kwargs)
+        super(ResidualBlockSDE, self).__init__(*args, **kwargs)
         
         self.time = nn.Sequential(
             FourierTimestepEmbedding(in_channels), 
@@ -94,60 +98,13 @@ class ResidualBlock(nn.Module):
         if embed: 
             x = x + self.time(t).view(-1, self.embed_size, 1, 1)
         return self.layers(x) + x * 1/np.sqrt(2)
-    
-    
-class UNETLayer(nn.Module):
-    
-    def __init__(
-        self: Self,
-        in_channels: int, 
-        out_channels: int, 
-        upsample: bool = False, 
-        attention: bool = False, 
-        num_heads: int = 8, 
-        dropout: float = 0.1,
-        *args, 
-        **kwargs
-    ) -> None:
-        super(UNETLayer, self).__init__(*args, **kwargs)
-        
-        self.resblock1 = ResidualBlock(in_channels=in_channels)    
-        self.resblock2 = ResidualBlock(in_channels=in_channels)
-        
-        if upsample:
-            self.conv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, 
-                                           kernel_size=4, stride=2, padding=1)
-        else:
-            self.conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
-                                  kernel_size=3, stride=2, padding=1)
-            
-        self.attention = attention
-        if attention: 
-            self.attention_layer = nn.MultiheadAttention(
-                embed_dim=in_channels, 
-                num_heads=num_heads,
-                dropout=dropout,
-                batch_first=True
-            )
-        
-    def forward(self: Self, x: Tensor, t: float | Tensor) -> None: 
-        x = self.resblock1(x, t, True)
-        if self.attention:
-            batch_size, channels, height, width = x.shape
-            x = x.view(batch_size, channels, -1).transpose(1, 2) # attention on patches
-            x, _ = self.attention_layer(x, x, x)
-            x = x.transpose(1, 2).view(batch_size, channels, height, width)
-    
-        x = self.resblock2(x, t, False)
-        return self.conv(x), x
-    
-    
+
 class ForwardNet(nn.Module):
     
     def __init__(
         self: Self,
         in_channels: int = 3, 
-        delta: float = 1e-3, 
+        delta: float = 1e-2, 
         channels: List = list([64, 128, 256, 512, 512, 384, 192]),
         *args, 
         **kwargs
@@ -155,12 +112,12 @@ class ForwardNet(nn.Module):
         super(ForwardNet, self).__init__(*args, **kwargs)
         
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=3, padding=1)
-        self.layer1 = UNETLayer(in_channels=64, out_channels=128) # 64 -> 128 
-        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True) # 128 -> 256
-        self.layer3 = UNETLayer(in_channels=256, out_channels=512) # 256 -> 512
-        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True) # 512 -> 256
-        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True) # 512 -> 384
-        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True) # 384 -> 192 
+        self.layer1 = UNETLayer(in_channels=64, out_channels=128, resblock=ResidualBlockSDE) # 64 -> 128 
+        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True, resblock=ResidualBlockSDE) # 128 -> 256
+        self.layer3 = UNETLayer(in_channels=256, out_channels=512, resblock=ResidualBlockSDE) # 256 -> 512
+        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True, resblock=ResidualBlockSDE) # 512 -> 256
+        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True, resblock=ResidualBlockSDE) # 512 -> 384
+        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True, resblock=ResidualBlockSDE) # 384 -> 192 
         
         self.conv2 = nn.Conv2d(in_channels=channels[6], out_channels=channels[6]//2, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(in_channels=channels[6]//2, out_channels=2 * in_channels, kernel_size=1)
@@ -265,12 +222,12 @@ class ReverseProcess(nn.Module):
         super(ReverseProcess, self).__init__(*args, **kwargs)
         
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=3, padding=1)
-        self.layer1 = UNETLayer(in_channels=64, out_channels=128) # 64 -> 128 
-        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True) # 128 -> 256
-        self.layer3 = UNETLayer(in_channels=256, out_channels=512) # 256 -> 512
-        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True) # 512 -> 256
-        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True) # 512 -> 384
-        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True) # 384 -> 192 
+        self.layer1 = UNETLayer(in_channels=64, out_channels=128, resblock=ResidualBlockSDE) # 64 -> 128 
+        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True, resblock=ResidualBlockSDE) # 128 -> 256
+        self.layer3 = UNETLayer(in_channels=256, out_channels=512, resblock=ResidualBlockSDE) # 256 -> 512
+        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True, resblock=ResidualBlockSDE) # 512 -> 256
+        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True, resblock=ResidualBlockSDE) # 512 -> 384
+        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True, resblock=ResidualBlockSDE)  # 384 -> 192 
         
         self.conv2 = nn.Conv2d(in_channels=channels[6], out_channels=channels[6]//2, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(in_channels=channels[6]//2, out_channels=in_channels, kernel_size=1)
@@ -305,7 +262,7 @@ class NFDMModel(nn.Module):
         self.g_t = VolatilityNeural()
         
     def drift(self: Self, dz: Tensor, score: Tensor, vol: Tensor):
-        return dz - 0.5 * vol.view(-1, 1, 1, 1) * score
+        return dz - 0.5 * vol * score
     
     def forward(self: Self, x: Tensor, t: Tensor) -> Tensor: 
         eps = torch.randn_like(x)
@@ -314,11 +271,16 @@ class NFDMModel(nn.Module):
         pred_x = self.reverse_process(z, t)
         _, reverse_dz, reverse_scores = self.forward_process.inverse(z, pred_x, t)
         
-        vol = self.g_t(t).pow(2)
-        forward_drift = self.drift(forward_dz, forward_scores, vol)
-        reverse_drift = self.drift(reverse_dz, reverse_scores, vol)
+        vol = self.g_t(t).pow(2).view(-1, 1, 1, 1)
+        with torch.no_grad():
+            print("g_t(t) min/mean/max:", self.g_t(t).min().item(), self.g_t(t).mean().item(), self.g_t(t).max().item())
+            print("vol      min/mean/max:", vol.min().item(),   vol.mean().item(),   vol.max().item())
+        forward_drift  = self.drift(forward_dz, forward_scores, vol)
+        reverse_drift  = self.drift(reverse_dz, reverse_scores, vol)
         
-        return forward_drift, reverse_drift, vol 
+        losses = 0.5 * (forward_drift - reverse_drift).pow(2) / vol
+        
+        return losses
     
 class NFDM(GenerativeMethod):
     
@@ -372,11 +334,15 @@ class NFDM(GenerativeMethod):
                 
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
                 with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
-                    forward_drift, reverse_drift, vol = self.model(images, timesteps)
-                    loss = (0.5 * (forward_drift - reverse_drift) ** 2 / vol.view(-1, 1, 1, 1)).mean()
+                    losses = self.model(images, timesteps)
+                    loss = losses.mean()
                 
                 self.optimizer.zero_grad()
                 scaler.scale(loss).backward()
+                
+                # for name, param in self.model.named_parameters():
+                #     print(name, param.shape, param.norm())
+
                 scaler.step(self.optimizer)
                 scaler.update()
 
@@ -420,6 +386,7 @@ if __name__ == "__main__":
     x = torch.randn((1, 3, 32, 32), device='cuda')
     t = torch.rand((1, 1), device='cuda')
     model = NFDMModel().to('cuda')
+    
     
     out = model(x, t)
     # print(out[0], out[1])    

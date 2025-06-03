@@ -76,6 +76,7 @@ class UNETLayer(nn.Module):
         self: Self,
         in_channels: int, 
         out_channels: int, 
+        resblock: ResidualBlock = ResidualBlock,
         upsample: bool = False, 
         attention: bool = False, 
         num_heads: int = 8, 
@@ -85,8 +86,8 @@ class UNETLayer(nn.Module):
     ) -> None:
         super(UNETLayer, self).__init__(*args, **kwargs)
         
-        self.resblock1 = ResidualBlock(in_channels=in_channels)    
-        self.resblock2 = ResidualBlock(in_channels=in_channels)
+        self.resblock1 = resblock(in_channels=in_channels)    
+        self.resblock2 = resblock(in_channels=in_channels)
         
         if upsample:
             self.conv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, 

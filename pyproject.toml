@@ -13,6 +13,7 @@ dependencies = [
     "torchvision>=0.22.0",
     "line-profiler>=4.2.0",
     "ipykernel>=6.29.5",
+    "torchsummary>=1.5.1",
 ]
 
 [build-system]
