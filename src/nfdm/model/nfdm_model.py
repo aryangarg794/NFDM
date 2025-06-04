@@ -179,7 +179,7 @@ class NFDM(GenerativeMethod):
         self.device = device
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.batch_size = batch_size
-        self.amp = amp
+        self.amp = False
         self.lr_sched = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=gamma)
 
     @profile
@@ -240,7 +240,7 @@ class NFDM(GenerativeMethod):
             'nfdm' : self.model.state_dict(),
             'ema' : self.ema.state_dict(),
             'optimizer' : self.optimizer.state_dict()
-            }, f'../models/{dir}.pt')
+            }, f'/models/{dir}.pt')
         
     def load(
         self: Self, 
