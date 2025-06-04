@@ -17,7 +17,7 @@ parser.add_argument('-lr', '--lr', type=float, default=4e-4, help='learning rate
 parser.add_argument('-s', '--save', action='store_true', help='save model or not')
 parser.add_argument('-d', '--device', type=str, default='cpu', help='device')
 parser.add_argument('-t', '--test', action='store_true', help='test mode')
-parser.add_argument('-a', '--amp', action='store_false', help='turn off amp mode')
+parser.add_argument('-a', '--amp', action='store_true', help='turn on amp mode')
 parser.add_argument('--seed', type=int, default=None, help='seed experiment')
 parser.add_argument('--dir', type=str, default=None, help='where to load model from ')
 parser.add_argument('-m', '--model', type=str, default='nfdm', help='model type ')
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     
     print(f'Using {args.device.upper()}')
     
-    if args.seed  is not None:
+    if args.seed is not None:
         random.seed(args.seed)
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -58,7 +58,7 @@ if __name__ == "__main__":
             
         
         if not args.test:
-            print(f'=============Training {args.model.upper()} with batch {args.batch_size}=============')
+            print(f'=============Training {args.model.upper()} with batch {args.batch_size} and amp {args.amp}=============')
             cifar10 = CIFAR10(args.batch_size, device=args.device)
             test_batch = next(iter(cifar10.trainloader))
             model.train(epochs=args.epochs, train_loader=cifar10.trainloader, checkpoint=True)

@@ -113,7 +113,7 @@ class ForwardNet(nn.Module):
     def __init__(
         self: Self,
         in_channels: int = 3, 
-        delta: float = 1e-1, 
+        delta: float = 1e-2, 
         channels: List = list([64, 128, 256, 512, 512, 384, 192]),
         *args, 
         **kwargs
@@ -272,7 +272,7 @@ class NFDMModel(nn.Module):
         self.reverse_process = ReverseProcess(in_channels)
         self.g_t = VolatilityNeural()
         
-    def drift(self: Self, dz: Tensor, score: Tensor, vol: Tensor):
+    def drift(self: Self, dz: Tensor, score: Tensor, vol: Tensor) -> Tensor:
         return dz - 0.5 * vol * score
     
     def forward(self: Self, x: Tensor, t: Tensor) -> Tensor: 
@@ -314,7 +314,7 @@ class NFDM(GenerativeMethod):
         self.amp = amp
         self.warmup = warmup
         
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.optimizer = torch.optim.Adam(self.model.forward_process.parameters(), lr=lr)
         self.lr_sched = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
 
     
@@ -322,7 +322,7 @@ class NFDM(GenerativeMethod):
         self: Self, 
         epochs: int, 
         train_loader: torch.utils.data.DataLoader,
-        checkpoint: bool = False,
+        checkpoint: bool = True,
     ) -> None:
         if checkpoint:
             try: 
@@ -361,7 +361,7 @@ class NFDM(GenerativeMethod):
         
                 batch_loss += loss.detach().item()
                 
-                pbar.set_description(f"Training NFDM | Last Loss: {batch_loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
+                pbar.set_description(f"Training NFDM | Last Loss: {loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
 
             self.lr_sched.step()
             self.epoch_loss = batch_loss / len(images)
@@ -400,4 +400,5 @@ if __name__ == "__main__":
     
     
     out = model(x, t)
+    print(summary(model))
     # print(out[0], out[1])    

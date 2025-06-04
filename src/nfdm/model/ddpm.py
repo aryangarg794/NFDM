@@ -238,7 +238,7 @@ class Diffusion(GenerativeMethod):
         
                 batch_loss += loss.detach().item()
                 
-                pbar.set_description(f"Training Diffusion | Last Loss: {self.epoch_loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
+                pbar.set_description(f"Training Diffusion | Last Loss: {batch_loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
 
             self.lr_sched.step()
             self.epoch_loss = batch_loss / len(images)
