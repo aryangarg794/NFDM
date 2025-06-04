@@ -24,6 +24,10 @@ class WarmUp(LRScheduler):
     ):
         super().__init__(optimizer, last_epoch)
         
+
+class VolatilityLinSNR(nn.Module):
+    def forward(self, t: Tensor) -> Tensor:
+        return (20 * torch.sigmoid(-10 + 20 * t)) ** 0.5
         
 
 class VolatilityNeural(nn.Module):
@@ -63,7 +67,7 @@ class ResidualBlockSDE(nn.Module):
     def __init__(
         self: Self,
         in_channels: int,
-        dropout: float = 0.1, 
+        dropout: float = 0.0, 
         activation: nn.Module = nn.ReLU,
         groups: int = 32,
         hidden_dim: int = 64, 
@@ -98,6 +102,11 @@ class ResidualBlockSDE(nn.Module):
         if embed: 
             x = x + self.time(t).view(-1, self.embed_size, 1, 1)
         return self.layers(x) + x * 1/np.sqrt(2)
+    
+class UNETNFDM(UNETLayer):
+    
+    def __init__(self, dropout: float = 0.0, *args, **kwargs):
+        super(UNETNFDM, self).__init__(resblock = ResidualBlockSDE,  dropout=dropout, *args, **kwargs)
 
 class ForwardNet(nn.Module):
     
@@ -112,12 +121,12 @@ class ForwardNet(nn.Module):
         super(ForwardNet, self).__init__(*args, **kwargs)
         
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=3, padding=1)
-        self.layer1 = UNETLayer(in_channels=64, out_channels=128, resblock=ResidualBlockSDE) # 64 -> 128 
-        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True, resblock=ResidualBlockSDE) # 128 -> 256
-        self.layer3 = UNETLayer(in_channels=256, out_channels=512, resblock=ResidualBlockSDE) # 256 -> 512
-        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True, resblock=ResidualBlockSDE) # 512 -> 256
-        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True, resblock=ResidualBlockSDE) # 512 -> 384
-        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True, resblock=ResidualBlockSDE) # 384 -> 192 
+        self.layer1 = UNETNFDM(in_channels=64, out_channels=128) # 64 -> 128 
+        self.layer2 = UNETNFDM(in_channels=128, out_channels=256, attention=True) # 128 -> 256
+        self.layer3 = UNETNFDM(in_channels=256, out_channels=512) # 256 -> 512
+        self.layer4 = UNETNFDM(in_channels=512, out_channels=256, upsample=True) # 512 -> 256
+        self.layer5 = UNETNFDM(in_channels=512, out_channels=256, upsample=True) # 512 -> 384
+        self.layer6 = UNETNFDM(in_channels=384, out_channels=128, attention=True, upsample=True) # 384 -> 192 
         
         self.conv2 = nn.Conv2d(in_channels=channels[6], out_channels=channels[6]//2, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(in_channels=channels[6]//2, out_channels=2 * in_channels, kernel_size=1)
@@ -222,12 +231,12 @@ class ReverseProcess(nn.Module):
         super(ReverseProcess, self).__init__(*args, **kwargs)
         
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=3, padding=1)
-        self.layer1 = UNETLayer(in_channels=64, out_channels=128, resblock=ResidualBlockSDE) # 64 -> 128 
-        self.layer2 = UNETLayer(in_channels=128, out_channels=256, attention=True, resblock=ResidualBlockSDE) # 128 -> 256
-        self.layer3 = UNETLayer(in_channels=256, out_channels=512, resblock=ResidualBlockSDE) # 256 -> 512
-        self.layer4 = UNETLayer(in_channels=512, out_channels=256, upsample=True, resblock=ResidualBlockSDE) # 512 -> 256
-        self.layer5 = UNETLayer(in_channels=512, out_channels=256, upsample=True, resblock=ResidualBlockSDE) # 512 -> 384
-        self.layer6 = UNETLayer(in_channels=384, out_channels=128, attention=True, upsample=True, resblock=ResidualBlockSDE)  # 384 -> 192 
+        self.layer1 = UNETNFDM(in_channels=64, out_channels=128) # 64 -> 128 
+        self.layer2 = UNETNFDM(in_channels=128, out_channels=256, attention=True) # 128 -> 256
+        self.layer3 = UNETNFDM(in_channels=256, out_channels=512) # 256 -> 512
+        self.layer4 = UNETNFDM(in_channels=512, out_channels=256, upsample=True) # 512 -> 256
+        self.layer5 = UNETNFDM(in_channels=512, out_channels=256, upsample=True) # 512 -> 384
+        self.layer6 = UNETNFDM(in_channels=384, out_channels=128, attention=True, upsample=True)  # 384 -> 192 
         
         self.conv2 = nn.Conv2d(in_channels=channels[6], out_channels=channels[6]//2, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(in_channels=channels[6]//2, out_channels=in_channels, kernel_size=1)
