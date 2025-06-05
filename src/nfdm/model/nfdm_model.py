@@ -2,6 +2,8 @@ import torch
 import math 
 import numpy as np
 import torch.nn as nn
+import torchvision
+import matplotlib.pyplot as plt
 
 from torch import Tensor
 from typing import Self, List, Tuple, Callable
@@ -15,14 +17,45 @@ from nfdm.model.model_abc import GenerativeMethod
 from nfdm.model.ddpm import UNETLayer
 
 
-class WarmUp(LRScheduler):
+class WarmupPolyDecayLR(LRScheduler):
     
     def __init__(
-        self: Self, 
-        optimizer: torch.optim, 
+        self,
+        optimizer: torch.optim.Optimizer,
+        warmup_epochs: int,
+        warmup_start_lr: float,
+        warmup_target_lr: float,
+        decay_epochs: int,
+        final_lr: float,
         last_epoch: int = -1
     ):
+        self.warmup_epochs   = warmup_epochs
+        self.decay_epochs    = decay_epochs
+        self.start_lr        = warmup_start_lr
+        self.target_lr       = warmup_target_lr
+        self.final_lr        = final_lr
+
+        for group in optimizer.param_groups:
+            group["lr"] = self.start_lr
+
         super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        epoch = self.last_epoch  
+
+        if epoch < 0:
+            return [self.start_lr for _ in self.optimizer.param_groups]
+        
+        if epoch <= self.warmup_epochs:
+            lr = self.target_lr + (self.start_lr - self.target_lr) * max(0, (self.warmup_epochs - epoch) / self.warmup_epochs)
+
+        elif self.warmup_epochs <= epoch <= self.warmup_epochs + self.decay_epochs:
+            decay_step = epoch - self.warmup_epochs
+            lr = self.final_lr + (self.target_lr - self.final_lr) * max(0, (self.decay_epochs - decay_step) / self.decay_epochs)
+        else:
+            lr = self.final_lr
+
+        return [lr for _ in self.optimizer.param_groups]
         
 
 class VolatilityLinSNR(nn.Module):
@@ -48,7 +81,7 @@ class VolatilityNeural(nn.Module):
         self.sp = nn.Softplus()
 
     def forward(self, t: Tensor) -> Tensor:
-        return self.sp(self.net(t)) 
+        return self.sp(self.net(t))
 
 class FourierTimestepEmbedding(nn.Module):
     def __init__(self, embed_dim, scale=1.0):
@@ -113,7 +146,7 @@ class ForwardNet(nn.Module):
     def __init__(
         self: Self,
         in_channels: int = 3, 
-        delta: float = 1e-2, 
+        delta: float = 1e-1, 
         channels: List = list([64, 128, 256, 512, 512, 384, 192]),
         *args, 
         **kwargs
@@ -154,8 +187,9 @@ class ForwardNet(nn.Module):
         time_tensor = t.view(-1, 1, 1, 1)
         mu = (1 - time_tensor) * x + time_tensor * (1 - time_tensor) * mu_bar
         sig = math.log(self.delta) * (1 - time_tensor) + sigma_bar * time_tensor * (1 - time_tensor) # avoiding nans 
+        # sig = sig.clamp(-5, 5)
         
-        return mu, sig.exp()
+        return mu, self.sp(sig)
 
 class ForwardProcess(nn.Module):
     
@@ -196,7 +230,8 @@ class ForwardProcess(nn.Module):
 
         mu, sigma = values
         dmu, dsigma = grads
-          
+        
+        # print(sigma.min())  
         z = eps * sigma + mu
         dz = dmu + dsigma * eps
         score = - eps / sigma
@@ -213,6 +248,7 @@ class ForwardProcess(nn.Module):
         mu, sigma = values
         dmu, dsigma = grads
         
+        # print(sigma.min())
         eps = (z - mu) / sigma
         dz = dmu + dsigma / sigma * (z - mu)
         score = (mu - z) / sigma ** 2
@@ -255,7 +291,7 @@ class ReverseProcess(nn.Module):
         h = self.relu(h)
         out = self.conv3(h)
         time = t.view(-1, 1, 1, 1)
-        # out = (1 - time) * out + (time + 0.01) * x
+        out = (1 - time) * out + (time + 0.01) * x
         
         return out
     
@@ -286,6 +322,7 @@ class NFDMModel(nn.Module):
         # with torch.no_grad():
         #     print("g_t(t) min/mean/max:", self.g_t(t).min().item(), self.g_t(t).mean().item(), self.g_t(t).max().item())
         #     print("vol      min/mean/max:", vol.min().item(),   vol.mean().item(),   vol.max().item())
+        # print(vol.min())
         forward_drift  = self.drift(forward_dz, forward_scores, vol)
         reverse_drift  = self.drift(reverse_dz, reverse_scores, vol)
         
@@ -301,6 +338,7 @@ class NFDM(GenerativeMethod):
         warmup: int = 10,
         batch_size: int = 128, 
         lr: float = 2e-4,
+        warmup_lr: float = 1e-8,
         device: str = 'cpu',
         amp: bool = True, 
     ) -> None:
@@ -313,9 +351,10 @@ class NFDM(GenerativeMethod):
         self.device = device
         self.amp = amp
         self.warmup = warmup
+        self.lr = lr
+        self.warmup_lr = warmup_lr
         
-        self.optimizer = torch.optim.Adam(self.model.forward_process.parameters(), lr=lr)
-        self.lr_sched = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
+        self.optimizer = torch.optim.Adam(self.model.forward_process.parameters(), lr=warmup_lr)
 
     
     def train(
@@ -333,7 +372,8 @@ class NFDM(GenerativeMethod):
         max_loss = float('inf')
         self.it = 0 
         self.epoch_loss = 0   
-        scaler = GradScaler(self.device, enabled=self.amp)
+        self.lr_sched = WarmupPolyDecayLR(self.optimizer, self.warmup, self.warmup_lr, self.lr, 
+                                          epochs-1, self.warmup_lr)
         
         for epoch in (pbar := tqdm(range(epochs + self.warmup))): 
             batch_loss = 0 
@@ -344,28 +384,25 @@ class NFDM(GenerativeMethod):
                 images, _ = data
                 
                 timesteps = torch.rand((self.batch_size, 1), device=self.device)
-                with torch.autocast(device_type=self.device, dtype=torch.bfloat16, enabled=self.amp):
-                    losses = self.model(images, timesteps)
-                    loss = losses.mean()
+                losses = self.model(images, timesteps)
+                loss = losses.mean()
+                    
                 
                 self.optimizer.zero_grad()
-                scaler.scale(loss).backward()
-                
+                loss.backward()
                 # for name, param in self.model.named_parameters():
                 #     print(name, param.shape, param.norm())
-
-                scaler.step(self.optimizer)
-                scaler.update()
-
-                self.ema.update(self.model)
+                self.optimizer.step()
+                
+                # self.ema.update(self.model)
         
                 batch_loss += loss.detach().item()
                 
-                pbar.set_description(f"Training NFDM | Last Loss: {loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
+                pbar.set_description(f"Training NFDM | Last Loss: {loss:.3f} | LR: {lr:.9f} | Iter: {self.it}")
 
-            self.lr_sched.step()
+            
             self.epoch_loss = batch_loss / len(images)
-                
+            self.lr_sched.step()    
             if checkpoint and batch_loss < max_loss: 
                 self.save('checkpoint_nfdm')
                 max_loss = batch_loss
@@ -389,9 +426,77 @@ class NFDM(GenerativeMethod):
         self.ema.load_state_dict(load_obj['ema'])
         self.optimizer.load_state_dict(load_obj['optimizer'])
         
-    def generate(self: Self, num_samples: int = 5) -> None: 
-        pass
+    @torch.no_grad()
+    def generate(
+        self: Self,
+        num_samples: int = 5,
+        num_timesteps: int = 300, 
+        frame_count: int = 10,
+        save_individual_img: bool = False, 
+    ) -> None: 
+        def display_reverse(images: List, i: int):
+            grid = torchvision.utils.make_grid(images, nrow=len(images)//2, normalize=True, value_range=(-1,1))
+            grid = grid.permute(1, 2, 0)
+            plt.figure(figsize=(24, 18))
+            plt.imshow(grid.cpu().numpy())
+            plt.axis('off')
+            plt.savefig(f'examples/nfdm_example_{i}.png')
+            torch.cuda.empty_cache()
+            
+        self.model.eval()
+        self.ema.module.eval()
 
+        def sde(z_in, t_in):
+            x_ = self.model.reverse_process(z_in, t_in)
+
+            _, dz, score = self.model.forward_process.inverse(z_in, x_, t_in)
+
+            g = self.model.g_t(t_in)
+            g2 = g ** 2
+
+            drift = self.model.drift(dz, score, g2)
+
+            return drift, g
+
+        z = torch.randn((num_samples, 3, 32, 32), device=self.device)
+        x, (_, zs) = self.solve_sde(sde, z, 1, 0, num_timesteps, show_pbar=True, device=self.device)
+        step_size = len(zs) // (frame_count-1)
+        for i, image in enumerate(x):
+            display_reverse(torch.cat((zs[::step_size,i,:,:,:][:frame_count-1], image.unsqueeze(0))), i)
+            
+        self.model.train()
+        self.ema.module.train()
+
+    @torch.no_grad()
+    def solve_sde(
+            self: Self,     
+            sde: Callable[[Tensor, Tensor], tuple[Tensor, Tensor]],
+            z: Tensor,
+            ts: float,
+            tf: float,
+            n_steps: int,
+            show_pbar: bool=False,
+            device = 'cpu'
+    ):
+        bs = z.shape[0]
+
+        t_steps = torch.linspace(ts, tf, n_steps + 1, device=device)
+        dt = (tf - ts) / n_steps
+        dt_2 = abs(dt) ** 0.5
+
+        path = [z]
+        pbar = tqdm if show_pbar else (lambda a: a)
+        for t in pbar(t_steps[:-1]):
+            t = t.expand(bs, 1, 1, 1)
+
+            f, g = sde(z, t)
+
+            w = torch.randn_like(z)
+            z = z + f * dt + g * w * dt_2
+
+            path.append(z)
+
+        return z, (t_steps, torch.stack(path))
     
 if __name__ == "__main__": 
     x = torch.randn((1, 3, 32, 32), device='cuda')

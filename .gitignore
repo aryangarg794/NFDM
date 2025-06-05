@@ -3,3 +3,5 @@
 data
 /models/checkpoint.pt
 /models/checkpoint_ddpm.pt
+/models/checkpoint_nfdm.pt
+/models/checkpoint_nfdm copy.pt
