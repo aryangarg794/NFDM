@@ -42,7 +42,7 @@ class Var_Scheduler(nn.Module):
         self.sp = nn.Softplus()
         
     def forward(self, t: Tensor) -> Tensor:
-        return self.sp(self.net(t)) + 1e-2
+        return self.sp(self.net(t)) + 1e-3
     
 class AffineNeural(nn.Module):
     def __init__(self, in_channels, out_channels, device):
@@ -51,14 +51,32 @@ class AffineNeural(nn.Module):
         self.net = DDPM(in_channels=in_channels, out_channels=out_channels).to(device)
 
     def forward(self, x: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-        m_ls = self.net(x, t)
-        m, ls = m_ls.chunk(2, dim=1)
+        # m_ls = self.net(x, t)
+        # m, ls = m_ls.chunk(2, dim=1)
+
+        # t = t.view(-1, 1, 1, 1)
+        # m = (1 - t) * x + t * (1 - t) * m
+        # ls = (1 - t) * np.log(0.01) + t * (1 - t) * ls
+
+        # ls = 10 * (torch.sigmoid(ls) - 0.5)
+
+        m_s = self.net(x, t)
+        m, s = m_s.chunk(2, dim=1)
 
         t = t.view(-1, 1, 1, 1)
         m = (1 - t) * x + t * (1 - t) * m
-        ls = (1 - t) * np.log(0.01) + t * (1 - t) * ls
+        # ls = (1 - t) * np.log(0.01) + t * (1 - t) * ls
+        s = (0.01 ** (1-t)) * ((5 * torch.sigmoid(s)) ** (t * (1-t)))
 
-        return m, torch.exp(ls)
+        # # ls = ls.clamp(-5, 5)
+
+        # if torch.rand(1) < 0.2:
+        #     print(ls.min(), ls.max())
+
+        # u = torch.exp(ls)
+        # if torch.rand(1) < 0.2:
+        #     print(u.max(), ls.max())
+        return m, s
     
 def jvp(f, x: Tensor, v: Tensor) -> tuple[Tensor, ...]:
     return torch.autograd.functional.jvp(

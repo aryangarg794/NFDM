@@ -63,15 +63,7 @@ class ResidualBlock(nn.Module):
     ) -> None:
         super(ResidualBlock, self).__init__(*args, **kwargs)
         
-        self.time = nn.Sequential(
-            FourierTimestepEmbedding(in_channels), 
-            activation(), 
-            nn.Linear(in_channels, hidden_dim), 
-            activation(), 
-            nn.Linear(hidden_dim, hidden_dim), 
-            activation(),
-            nn.Linear(hidden_dim, in_channels)
-        )
+        self.time = FourierTimestepEmbedding(in_channels)
         
         self.layers = nn.Sequential(
             nn.GroupNorm(num_groups=groups, num_channels=in_channels),
