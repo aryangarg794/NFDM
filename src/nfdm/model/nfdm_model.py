@@ -111,12 +111,6 @@ class ResidualBlockSDE(nn.Module):
         
         self.time = nn.Sequential(
             FourierTimestepEmbedding(in_channels), 
-            activation(), 
-            nn.Linear(in_channels, hidden_dim), 
-            activation(), 
-            nn.Linear(hidden_dim, hidden_dim), 
-            activation(),
-            nn.Linear(hidden_dim, in_channels)
         )
         
         self.embed_size = in_channels
@@ -146,7 +140,7 @@ class ForwardNet(nn.Module):
     def __init__(
         self: Self,
         in_channels: int = 3, 
-        delta: float = 1e-1, 
+        delta: float = 1e-2, 
         channels: List = list([64, 128, 256, 512, 512, 384, 192]),
         *args, 
         **kwargs
@@ -354,7 +348,7 @@ class NFDM(GenerativeMethod):
         self.lr = lr
         self.warmup_lr = warmup_lr
         
-        self.optimizer = torch.optim.Adam(self.model.forward_process.parameters(), lr=warmup_lr)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
 
     
     def train(
@@ -372,8 +366,13 @@ class NFDM(GenerativeMethod):
         max_loss = float('inf')
         self.it = 0 
         self.epoch_loss = 0   
-        self.lr_sched = WarmupPolyDecayLR(self.optimizer, self.warmup, self.warmup_lr, self.lr, 
-                                          epochs-1, self.warmup_lr)
+        # self.lr_sched = WarmupPolyDecayLR(self.optimizer, self.warmup, self.warmup_lr, self.lr, 
+        #                                   epochs-1, self.warmup_lr)
+        
+        self.lr_sched = torch.optim.lr_scheduler.PolynomialLR(self.optimizer, total_iters=self.warmup + epochs)
+        loss_array = []
+        images_high_loss = None
+        images_nan = None
         
         for epoch in (pbar := tqdm(range(epochs + self.warmup))): 
             batch_loss = 0 
@@ -391,22 +390,56 @@ class NFDM(GenerativeMethod):
                 self.optimizer.zero_grad()
                 loss.backward()
                 # for name, param in self.model.named_parameters():
-                #     print(name, param.shape, param.norm())
+                #     print(f'Iteration: {self.it} | Epoch: {epoch} | Name: {name} | Param Norm: {param.norm()}')
+                
                 self.optimizer.step()
                 
                 # self.ema.update(self.model)
-        
-                batch_loss += loss.detach().item()
+                loss_item = loss.detach().item()
+                loss_array.append(loss_item)
+                # print(f'Loss for Iteration {self.it} and Epoch {epoch}: {loss_item}')
+                # if loss > 1e8: 
+                #     if images_high_loss: 
+                #         images_high_loss = torch.cat([images_high_loss, images], dim=0)
+                #     else:
+                #         images_high_loss = images
+                
+                # if torch.isnan(loss).any():
+                #     images_nan = images
+                #     break
+                # batch_loss += loss.detach().item()
                 
                 pbar.set_description(f"Training NFDM | Last Loss: {loss:.3f} | LR: {lr:.9f} | Iter: {self.it}")
 
+            if torch.isnan(loss).any():
+                break
+
             
             self.epoch_loss = batch_loss / len(images)
-            self.lr_sched.step()    
+            # self.lr_sched.step()    
             if checkpoint and batch_loss < max_loss: 
                 self.save('checkpoint_nfdm')
                 max_loss = batch_loss
         
+        # nan_indices = np.where(np.isnan(loss_array))[0]
+
+        # if nan_indices.size > 0:
+        #     first_nan = nan_indices[0]
+        #     plt.plot(np.arange(first_nan), loss_array[:first_nan], label="Training Curve")
+        #     plt.axvline(x=first_nan, color='r', linestyle='--', label="First NaN")
+        # else:
+        #     plt.plot(loss_array, label="No Nans training curve")
+
+        # plt.xlabel("Iterations")
+        # plt.ylabel("Loss")
+        # plt.title("Training Curve Plot with NaN Marker")
+        # plt.legend()
+        # plt.grid(True)
+        # plt.savefig('losses.png')
+        
+        # self.plot_batch(images_nan, 'nan_batch')
+        # self.plot_batch(images_high_loss, 'high_loss_batch')
+
     def save(
         self: Self,
         dir: str = 'nfdm'
@@ -416,6 +449,14 @@ class NFDM(GenerativeMethod):
             'ema' : self.ema.state_dict(),
             'optimizer' : self.optimizer.state_dict()
             }, f'models/{dir}.pt')
+        
+    def plot_batch(self: Self, images: Tensor, name: str) -> None:
+        grid = torchvision.utils.make_grid(images, nrow=len(images)//2, normalize=True, value_range=(-1,1))
+        grid = grid.permute(1, 2, 0)
+        plt.figure(figsize=(24, 18))
+        plt.imshow(grid.cpu().numpy())
+        plt.axis('off')
+        plt.savefig(f'{name}.png')
     
     def load(
         self: Self, 
