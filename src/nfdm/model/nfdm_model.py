@@ -178,6 +178,7 @@ class ForwardNet(nn.Module):
         h = self.conv3(h)
         
         mu_bar, sigma_bar = h.chunk(2, dim=1)
+        sigma_bar = self.sp(sigma_bar)
         time_tensor = t.view(-1, 1, 1, 1)
         mu = (1 - time_tensor) * x + time_tensor * (1 - time_tensor) * mu_bar
         sig = math.log(self.delta) * (1 - time_tensor) + sigma_bar * time_tensor * (1 - time_tensor) # avoiding nans 
@@ -285,7 +286,7 @@ class ReverseProcess(nn.Module):
         h = self.relu(h)
         out = self.conv3(h)
         time = t.view(-1, 1, 1, 1)
-        out = (1 - time) * out + (time + 0.01) * x
+        # out = (1 - time) * out + (time + 0.01) * x
         
         return out
     
@@ -303,7 +304,7 @@ class NFDMModel(nn.Module):
         self.g_t = VolatilityNeural()
         
     def drift(self: Self, dz: Tensor, score: Tensor, vol: Tensor) -> Tensor:
-        return dz - 0.5 * vol * score
+        return dz + 0.5 * vol * score
     
     def forward(self: Self, x: Tensor, t: Tensor) -> Tensor: 
         eps = torch.randn_like(x)
@@ -318,7 +319,7 @@ class NFDMModel(nn.Module):
         #     print("vol      min/mean/max:", vol.min().item(),   vol.mean().item(),   vol.max().item())
         # print(vol.min())
         forward_drift  = self.drift(forward_dz, forward_scores, vol)
-        reverse_drift  = self.drift(reverse_dz, reverse_scores, vol)
+        reverse_drift  = self.drift(reverse_dz, reverse_scores, -vol)
         
         losses = 0.5 * (forward_drift - reverse_drift).pow(2) / vol
         

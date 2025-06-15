@@ -6,7 +6,7 @@ import random
 from nfdm.model.autoencoder import AutoEncoder
 from nfdm.model.ddpm import Diffusion
 from nfdm.model.nfdm_model import NFDM
-from nfdm.utils.dataset import CIFAR10
+from nfdm.utils.dataset import CIFAR10, MNIST
 
 
 parser = argparse.ArgumentParser()
