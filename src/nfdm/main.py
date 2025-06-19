@@ -52,7 +52,7 @@ if __name__ == "__main__":
             case 'ddpm':
                 model = Diffusion(in_channels=3, 
                             lr=args.lr, batch_size=args.batch_size, 
-                            device=args.device, amp=False) 
+                            device=args.device, amp=args.amp) 
             case _:
                 raise NotImplementedError('Model type not found')
             

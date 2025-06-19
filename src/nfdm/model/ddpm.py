@@ -200,7 +200,7 @@ class Diffusion(GenerativeMethod):
         self: Self, 
         train_loader: torch.utils.data.DataLoader,
         epochs: int = 100, 
-        checkpoint: bool = False, 
+        checkpoint: bool = True, 
     ) -> List[float]: 
         if checkpoint:
             try: 
@@ -237,11 +237,11 @@ class Diffusion(GenerativeMethod):
                 self.ema.update(self.model)
         
                 batch_loss += loss.detach().item()
-                
-                pbar.set_description(f"Training Diffusion | Last Loss: {batch_loss:.3f} | LR: {lr:.7f} | Iter: {self.it}")
+
 
             self.lr_sched.step()
             self.epoch_loss = batch_loss / len(images)
+            pbar.set_description(f"Training Diffusion | Last Loss: {self.epoch_loss:.3f} | LR: {lr:.7f}")
                 
             if checkpoint and batch_loss < max_loss: 
                 self.save('checkpoint_ddpm')

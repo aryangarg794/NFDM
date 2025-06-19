@@ -304,7 +304,7 @@ class NFDMModel(nn.Module):
         self.g_t = VolatilityNeural()
         
     def drift(self: Self, dz: Tensor, score: Tensor, vol: Tensor) -> Tensor:
-        return dz + 0.5 * vol * score
+        return dz - 0.5 * vol * score
     
     def forward(self: Self, x: Tensor, t: Tensor) -> Tensor: 
         eps = torch.randn_like(x)
@@ -319,9 +319,9 @@ class NFDMModel(nn.Module):
         #     print("vol      min/mean/max:", vol.min().item(),   vol.mean().item(),   vol.max().item())
         # print(vol.min())
         forward_drift  = self.drift(forward_dz, forward_scores, vol)
-        reverse_drift  = self.drift(reverse_dz, reverse_scores, -vol)
+        reverse_drift  = self.drift(reverse_dz, reverse_scores, vol)
         
-        losses = 0.5 * (forward_drift - reverse_drift).pow(2) / vol
+        losses = 0.5 * (forward_drift - reverse_drift).norm(p=2).pow(2) / vol
         
         return losses
     
