@@ -6,7 +6,7 @@ from nfdm.model.autoencoder import AutoEncoder
 from nfdm.model.ddpm import Diffusion
 from nfdm.utils.dataset import CIFAR10
 from nfdm.model.nfdm_model import NFDM
-
+from nfdm.model.nfdm_model_2d import NFDM_2D
 
 parser = argparse.ArgumentParser()
 
@@ -18,6 +18,9 @@ parser.add_argument('-d', '--device', type=str, default='cpu', help='device')
 parser.add_argument('-t', '--test', action='store_true', help='test mode')
 parser.add_argument('-a', '--amp', action='store_false', help='turn off amp mode')
 parser.add_argument('--dir', type=str, default=None, help='where to load model from ')
+parser.add_argument('--toy', type=bool, default=False, help='use toy data for testing')
+parser.add_argument('--ckpt_name', type=str, default='checkpoint_2d', help='Custom checkpoint name')
+parser.add_argument('--curv_wt', type=float, default=0.0, help='Weight for curvature penalty (optimal transport regularization)')
 
 args = parser.parse_args()
 
@@ -36,12 +39,30 @@ if __name__ == "__main__":
                         lr=args.lr, batch_size=args.batch_size, 
                         device=args.device, amp=args.amp)
     
-    
+    if args.toy:
+        model = NFDM_2D(in_dim=2,  # 2D points
+                        lr=args.lr, 
+                        batch_size=args.batch_size, 
+                        device=args.device, 
+                        amp=args.amp,
+                        curvature_weight=args.curv_wt)
     try: 
         if not args.test:
-            cifar10 = CIFAR10(args.batch_size, device=args.device)
-            test_batch = next(iter(cifar10.trainloader))
-            model.train(epochs=args.epochs, train_loader=cifar10.trainloader, checkpoint=True)
+            if args.toy:
+                from nfdm.utils.toy_data_creator import ToyDataCreator
+                #toy_data = ToyDataCreator(batch_size=args.batch_size)#, datapath='squares_dataset.pt')
+                toy_data = ToyDataCreator(batch_size=args.batch_size)#, datapath='../../squares_dataset.pt')
+
+                toy_data.plot(plot_all=True)
+                test_batch = next(iter(toy_data.loader))
+                #exit()
+                model.train(epochs=args.epochs, train_loader=toy_data.loader, checkpoint=True, ckpt_name=args.ckpt_name)
+               
+            else:
+                assert args.dir is None, "No model dir provided for training"
+                cifar10 = CIFAR10(args.batch_size, device=args.device)
+                test_batch = next(iter(cifar10.trainloader))
+                model.train(epochs=args.epochs, train_loader=cifar10.trainloader, checkpoint=True)
             if args.save:
                 model.save()
             model.generate()
