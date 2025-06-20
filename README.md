@@ -35,10 +35,10 @@ Make changes accordingly to run your experiments.
 ------- 
 #### Project Structure
 
-`examples`: contains generated samples from the frameworks
-`models`: contains saved checkpoints or full models for testing and generation
-`src/nfdm`: contains the base code
-`src/nfdm/models`: code for the models 
+`examples`: contains generated samples from the frameworks \
+`models`: contains saved checkpoints or full models for testing and generation \
+`src/nfdm`: contains the base code \
+`src/nfdm/models`: code for the models  
 `src/nfdm/utils`: dataloading code etc 
 
 #### References
